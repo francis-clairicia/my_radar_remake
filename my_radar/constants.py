@@ -53,3 +53,5 @@ IMG = {
 }
 
 FONT_DARK_CALIBRI = set_constant_file(FONT_FOLDER, "Darks_Calibri_Remix.ttf")
+
+AIRPLANE_SIZE = (20, 20)
