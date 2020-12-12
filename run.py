@@ -2,10 +2,29 @@
 # -*- coding: Utf-8 -*
 
 import sys
-from my_radar import MyRadar
+import argparse
+from my_radar import MyRadar, ScriptParser
+
+class MyHelpFormatter(argparse.RawTextHelpFormatter):
+
+    def format_help(self) -> str:
+        help_str = super().format_help()
+        if len(help_str.splitlines()) == 1:
+            return help_str
+        user_interaction_help = [
+            "user interactions:",
+            "  'L' key:" + 4 * " " + "enable/disable hitboxes and areas",
+            "  'S' key:" + 4 * " " + "enable/disable sprites",
+        ]
+        return help_str + "\n" + "\n".join(user_interaction_help) + "\n"
 
 def main() -> int:
-    MyRadar().start()
+    parser = argparse.ArgumentParser(prog="my_radar", description="Air traffic simulation panel", formatter_class=MyHelpFormatter)
+    parser.add_argument("script", type=ScriptParser, help="Path to a .rdr script file")
+
+    args = parser.parse_args()
+
+    MyRadar(args.script).start()
     return 0
 
 if __name__ == "__main__":
