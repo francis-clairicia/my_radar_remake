@@ -25,3 +25,6 @@ class Clock:
     def restart(self) -> None:
         self.__clock.tick()
         self.__time = 0
+
+    def tick(self) -> None:
+        self.__clock.tick()

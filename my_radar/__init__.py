@@ -4,6 +4,7 @@
 import sys
 import time
 import io
+from typing import Union
 
 sys.stdout = io.StringIO()
 import pygame
@@ -51,17 +52,22 @@ class MyRadar:
             self.towers_group.add(Tower.from_script_setup(tower_image, tower_setup))
         self.towers_list = tuple[Tower, ...](self.towers_group.sprites())
 
+        # Camera
+        self.camera = Camera(self.screen)
+
+        self.simulation_running = True
+
     @property
     def rect(self) -> pygame.Rect:
         return self.screen.get_rect()
 
     def start(self) -> None:
         loop = True
-        start_time = time.time()
         self.update(first=True)
         while loop:
             self.clock.tick(60)
-            self.chrono = time.time() - start_time
+            if self.simulation_running:
+                self.chrono += self.clock.get_time() / 1000
             self.screen.fill(BLACK)
             self.draw_screen()
             pygame.display.update()
@@ -76,14 +82,26 @@ class MyRadar:
                     if event.key == pygame.K_s:
                         Airplane.show_sprite(not Airplane.sprite_shown())
                         Tower.show_sprite(not Tower.sprite_shown())
+                    if event.key == pygame.K_p:
+                        self.simulation_running = not self.simulation_running
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    x, y = self.camera.map_cursor(event.pos)
+                    for airplane in self.airplanes_group:
+                        if airplane.rect.collidepoint(x, y):
+                            self.camera.focus(airplane)
+                            break
+                self.camera.handle_event(event)
             self.update()
-            if not self.airplanes_group:
+            if self.simulation_running and not self.airplanes_group:
                 loop = False
         pygame.quit()
 
     def update(self, first=False) -> None:
         # Update airplanes' position
-        self.airplanes_group.update()
+        self.airplanes_group.update(update_position=self.simulation_running)
+
+        if not self.simulation_running:
+            return
 
         # Update towers' area control
         self.towers_group.update(self.airplanes_list)
@@ -102,7 +120,16 @@ class MyRadar:
                 destroyed_airplane.destroy()
 
     def draw_screen(self) -> None:
-        self.screen.blit(self.background, self.background.get_rect())
+        self.screen.blit(self.background, (0, 0))
+
+        # Draw entities
+        for tower in self.towers_list:
+            tower.draw(self.screen)
+        for airplane in self.airplanes_list:
+            airplane.draw(self.screen)
+
+        # Set zoom scale
+        self.camera.update()
 
         # Draw framerate
         text_framerate = self.font.render("{} FPS".format(int(self.clock.get_fps())), True, WHITE)
@@ -112,12 +139,70 @@ class MyRadar:
         text_chrono = self.font.render(time.strftime("%H:%M:%S", time.gmtime(self.chrono)), True, WHITE)
         self.screen.blit(text_chrono, text_chrono.get_rect(top=self.rect.top + 10, right=self.rect.right - 10))
 
-        # Draw entities
-        for tower in self.towers_list:
-            tower.draw(self.screen)
-        for airplane in self.airplanes_list:
-            airplane.draw(self.screen)
-
     def get_airplanes_group_for_collision(self, index: int, target: Airplane) -> pygame.sprite.Group:
         airplane_list = self.airplanes_list[index + 1:]
         return pygame.sprite.Group(filter(lambda airplane: airplane != target and airplane.flying, airplane_list))
+
+
+class Camera:
+
+    def __init__(self, screen: pygame.Surface):
+        self.__screen = self.__surface = screen
+        self.__scale = 1
+        self.__rect = self.__screen.get_rect()
+        self.__airplane = None
+        self.__moving = False
+        self.__previous_infos = dict()
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEWHEEL:
+            self.__scale -= (event.y) / 10
+            self.__scale = max(self.__scale, 0.1)
+            self.__scale = min(self.__scale, 1)
+            self.__update_rect()
+        elif event.type == pygame.MOUSEMOTION and event.buttons[0] and not isinstance(self.__airplane, Airplane):
+            self.__moving = True
+            x, y = event.rel
+            self.__rect.move_ip(-x * self.__scale, -y * self.__scale)
+            self.__update_rect()
+
+    def focus(self, airplane: Union[Airplane, None]) -> None:
+        if isinstance(airplane, Airplane):
+            self.__airplane = airplane
+            self.__previous_infos["scale"] = self.__scale
+            self.__previous_infos["rect"] = self.__rect
+            self.__scale = 0.3
+        else:
+            self.__airplane = None
+            self.__scale = self.__previous_infos["scale"]
+            self.__rect = self.__previous_infos["rect"]
+        self.__update_rect()
+
+    def __update_rect(self) -> None:
+        screen_rect = self.__screen.get_rect()
+        if self.__scale == 1:
+            self.__rect = screen_rect
+        else:
+            center = self.__rect.center
+            self.__rect.size = (screen_rect.w * self.__scale, screen_rect.h * self.__scale)
+            self.__rect.center = center
+            self.__rect.left = max(self.__rect.left, screen_rect.left)
+            self.__rect.right = min(self.__rect.right, screen_rect.right)
+            self.__rect.top = max(self.__rect.top, screen_rect.top)
+            self.__rect.bottom = min(self.__rect.bottom, screen_rect.bottom)
+        self.__surface = self.__screen.subsurface(self.__rect)
+
+    def update(self) -> None:
+        if isinstance(self.__airplane, Airplane):
+            if self.__airplane.alive():
+                self.__rect.center = self.__airplane.rect.center
+                self.__update_rect()
+            else:
+                self.focus(None)
+        try:
+            self.__screen.blit(pygame.transform.smoothscale(self.__surface, self.__screen.get_size()), (0, 0))
+        except ValueError:
+            return
+
+    def map_cursor(self, cursor_pos: tuple[int, int]) -> tuple[int, int]:
+        return round(self.__scale * cursor_pos[0]) + self.__rect.left, round(self.__scale * cursor_pos[1]) + self.__rect.top

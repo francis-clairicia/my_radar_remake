@@ -62,11 +62,14 @@ class Airplane(pygame.sprite.Sprite):
     def hitbox_shown() -> bool:
         return Airplane.__show_hitbox
 
-    def update(self) -> None:
+    def update(self, update_position=True) -> None:
         if not self.__take_off:
-            self.__take_off = self.__departure_clock.elapsed_time(self.__delay, restart=False)
+            if not update_position:
+                self.__departure_clock.tick()
+            else:
+                self.__take_off = self.__departure_clock.elapsed_time(self.__delay, restart=False)
             return
-        if self.flying and not self.__update_clock.elapsed_time(self.__refresh_time):
+        if not update_position or (self.flying and not self.__update_clock.elapsed_time(self.__refresh_time)):
             return
         distance = (self.__arrival - self.__center).length()
         if distance > self.__speed:

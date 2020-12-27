@@ -11,10 +11,12 @@ class MyHelpFormatter(argparse.RawTextHelpFormatter):
         help_str = super().format_help()
         if len(help_str.splitlines()) == 1:
             return help_str
+        nb_spaces = 4
         user_interaction_help = [
             "user interactions:",
-            "  'L' key:" + 4 * " " + "enable/disable hitboxes and areas",
-            "  'S' key:" + 4 * " " + "enable/disable sprites",
+            "  'L' key:" + nb_spaces * " " + "enable/disable hitboxes and areas",
+            "  'S' key:" + nb_spaces * " " + "enable/disable sprites",
+            "  'P' key:" + nb_spaces * " " + "Play/pause the simulation",
         ]
         return help_str + "\n" + "\n".join(user_interaction_help) + "\n"
 
