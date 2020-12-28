@@ -63,12 +63,11 @@ class MyRadar:
         loop = True
         simulation_running = True
         self.chrono = 0
-        self.airplanes_group.update(self.chrono)
         while loop:
             self.clock.tick(60)
             if simulation_running:
                 self.chrono += self.clock.get_time() / 1000
-            self.screen.fill(BLACK)
+                self.airplanes_group.update(self.chrono)
             self.draw_screen()
             pygame.display.update()
             for event in pygame.event.get():
@@ -90,21 +89,12 @@ class MyRadar:
                             break
                 self.camera.handle_event(event)
             if simulation_running:
-                self.update()
+                self.towers_group.update(self.airplanes_group.sprites())
+                self.airplanes_group.check_collisions()
                 if not self.airplanes_group:
                     self.show_results()
                     loop = False
         pygame.quit()
-
-    def update(self) -> None:
-        # Update airplanes' position
-        self.airplanes_group.update(self.chrono)
-
-        # Update towers' area control
-        self.towers_group.update(self.airplanes_group.sprites())
-
-        # Check for airplane collision
-        self.airplanes_group.check_collisions()
 
     def draw_screen(self) -> None:
         self.screen.blit(self.background, (0, 0))
@@ -130,6 +120,7 @@ class MyRadar:
         for airplane in self.airplanes_list:
             land_on += int(airplane.land_on)
             destroyed += int(airplane.destroyed)
+        print("Simulation time:", time.strftime("%Hh%Mm%Ss", time.gmtime(self.chrono)))
         print("Airplanes landed on:", land_on)
         print("Airplanes destroyed:", destroyed)
 

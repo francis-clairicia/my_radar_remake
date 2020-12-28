@@ -26,6 +26,9 @@ class Airplane(Entity):
         self.__direction = arrival - departure
         self.__direction.scale_to_length(self.__speed)
         self.__angle = self.__direction.angle_to(Vector2(1, 0))
+        self.__hitbox_points = list[Vector2]()
+        self.__hitbox_edges = list[Vector2]()
+        self.__update_hitbox()
 
         # Entities
         self.__image_airplane = pygame.transform.rotate(self.__default_airplane_image, self.__angle).convert_alpha()
@@ -49,6 +52,7 @@ class Airplane(Entity):
         distance = (self.__arrival - self.__center).length()
         if distance > self.__speed:
             self.__center += self.__direction
+            self.__update_hitbox()
         else:
             self.kill()
             self.__land_on = True
@@ -59,13 +63,13 @@ class Airplane(Entity):
         if self.sprite_shown():
             surface.blit(self.__image_airplane, self.__image_airplane.get_rect(center=self.__center))
         if self.hitbox_shown():
-            pygame.draw.polygon(surface, pygame.Color(46, 173, 46), self.hitbox, width=1)
+            pygame.draw.polygon(surface, pygame.Color(46, 173, 46), self.__hitbox_points, width=1)
 
     def destroy(self) -> None:
         self.__destroyed = True
         self.kill()
 
-    def get_hitbox_points(self) -> list[Vector2]:
+    def __update_hitbox(self) -> None:
         rect = self.__default_airplane_image.get_rect(center=self.__center)
         center = Vector2(rect.center)
         all_points = list()
@@ -73,15 +77,18 @@ class Airplane(Entity):
             point = Vector2(point)
             direction = point - center
             all_points.append(center + direction.rotate(-self.__angle))
-        return all_points
-
-    def get_hitbox_edges(self) -> list[Vector2]:
-        points = self.get_hitbox_points()
-        nb_points = len(points)
+        self.__hitbox_points = all_points
+        nb_points = len(all_points)
         edges = list()
         for i in range(nb_points):
-            edges.append(points[(i + 1) % nb_points] - points[i])
-        return edges
+            edges.append(all_points[(i + 1) % nb_points] - all_points[i])
+        self.__hitbox_edges = edges
+
+    def get_hitbox_points(self) -> list[Vector2]:
+        return self.__hitbox_points
+
+    def get_hitbox_edges(self) -> list[Vector2]:
+        return self.__hitbox_edges
 
     image = property(lambda self: self.__image_airplane)
     rect = property(lambda self: self.image.get_rect(center=self.__center))
@@ -89,8 +96,6 @@ class Airplane(Entity):
     arrival = property(lambda self: self.__arrival)
     speed = property(lambda self: self.__speed)
     angle = property(lambda self: self.__angle)
-    hitbox = property(get_hitbox_points)
-    edges = property(get_hitbox_edges)
     take_off = property(lambda self: self.__take_off)
     land_on = property(lambda self: self.__land_on)
     destroyed = property(lambda self: self.__destroyed)
