@@ -11,8 +11,9 @@ import pygame
 sys.stdout = sys.__stdout__
 
 from .constants import BLACK, WHITE, IMG, FONT_DARK_CALIBRI
-from .airplane import Airplane
-from .tower import Tower
+from .entity import Entity
+from .airplane import Airplane, AirplaneGroup
+from .tower import Tower, TowerGroup
 from .parser import ScriptParser
 
 class MyRadar:
@@ -41,21 +42,18 @@ class MyRadar:
         self.font = pygame.font.Font(FONT_DARK_CALIBRI, 45)
 
         # Load Airplanes
-        self.airplanes_group = pygame.sprite.Group()
+        self.airplanes_group = AirplaneGroup()
         for airplane_setup in parser.airplanes:
             self.airplanes_group.add(Airplane.from_script_setup(airplane_image, airplane_setup))
-        self.airplanes_list = tuple[Airplane, ...](self.airplanes_group.sprites())
+        self.airplanes_list = self.airplanes_group.sprites().copy()
 
         # Load Towers
-        self.towers_group = pygame.sprite.Group()
+        self.towers_group = TowerGroup()
         for tower_setup in parser.towers:
             self.towers_group.add(Tower.from_script_setup(tower_image, tower_setup))
-        self.towers_list = tuple[Tower, ...](self.towers_group.sprites())
 
         # Camera
         self.camera = Camera(self.screen)
-
-        self.simulation_running = True
 
     @property
     def rect(self) -> pygame.Rect:
@@ -63,10 +61,12 @@ class MyRadar:
 
     def start(self) -> None:
         loop = True
-        self.update(first=True)
+        simulation_running = True
+        self.chrono = 0
+        self.airplanes_group.update(self.chrono)
         while loop:
             self.clock.tick(60)
-            if self.simulation_running:
+            if simulation_running:
                 self.chrono += self.clock.get_time() / 1000
             self.screen.fill(BLACK)
             self.draw_screen()
@@ -77,56 +77,41 @@ class MyRadar:
                     break
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_l:
-                        Airplane.show_hitbox(not Airplane.hitbox_shown())
-                        Tower.show_hitbox(not Tower.hitbox_shown())
+                        Entity.show_hitbox(not Entity.hitbox_shown())
                     if event.key == pygame.K_s:
-                        Airplane.show_sprite(not Airplane.sprite_shown())
-                        Tower.show_sprite(not Tower.sprite_shown())
+                        Entity.show_sprite(not Entity.sprite_shown())
                     if event.key == pygame.K_p:
-                        self.simulation_running = not self.simulation_running
-                elif event.type == pygame.MOUSEBUTTONUP:
+                        simulation_running = not simulation_running
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     x, y = self.camera.map_cursor(event.pos)
                     for airplane in self.airplanes_group:
                         if airplane.rect.collidepoint(x, y):
                             self.camera.focus(airplane)
                             break
                 self.camera.handle_event(event)
-            self.update()
-            if self.simulation_running and not self.airplanes_group:
-                loop = False
+            if simulation_running:
+                self.update()
+                if not self.airplanes_group:
+                    self.show_results()
+                    loop = False
         pygame.quit()
 
-    def update(self, first=False) -> None:
+    def update(self) -> None:
         # Update airplanes' position
-        self.airplanes_group.update(update_position=self.simulation_running)
-
-        if not self.simulation_running:
-            return
+        self.airplanes_group.update(self.chrono)
 
         # Update towers' area control
-        self.towers_group.update(self.airplanes_list)
-
-        if first:
-            return
+        self.towers_group.update(self.airplanes_group.sprites())
 
         # Check for airplane collision
-        for index, airplane in enumerate(self.airplanes_list):
-            if not airplane.flying or airplane.in_a_tower_area:
-                continue
-            group = self.get_airplanes_group_for_collision(index, airplane)
-            destroyed_airplane = pygame.sprite.spritecollideany(airplane, group, collided=pygame.sprite.collide_mask)
-            if destroyed_airplane is not None:
-                airplane.destroy()
-                destroyed_airplane.destroy()
+        self.airplanes_group.check_collisions()
 
     def draw_screen(self) -> None:
         self.screen.blit(self.background, (0, 0))
 
         # Draw entities
-        for tower in self.towers_list:
-            tower.draw(self.screen)
-        for airplane in self.airplanes_list:
-            airplane.draw(self.screen)
+        self.towers_group.draw(self.screen)
+        self.airplanes_group.draw(self.screen)
 
         # Set zoom scale
         self.camera.update()
@@ -139,10 +124,14 @@ class MyRadar:
         text_chrono = self.font.render(time.strftime("%H:%M:%S", time.gmtime(self.chrono)), True, WHITE)
         self.screen.blit(text_chrono, text_chrono.get_rect(top=self.rect.top + 10, right=self.rect.right - 10))
 
-    def get_airplanes_group_for_collision(self, index: int, target: Airplane) -> pygame.sprite.Group:
-        airplane_list = self.airplanes_list[index + 1:]
-        return pygame.sprite.Group(filter(lambda airplane: airplane != target and airplane.flying, airplane_list))
-
+    def show_results(self) -> None:
+        land_on = 0
+        destroyed = 0
+        for airplane in self.airplanes_list:
+            land_on += int(airplane.land_on)
+            destroyed += int(airplane.destroyed)
+        print("Airplanes landed on:", land_on)
+        print("Airplanes destroyed:", destroyed)
 
 class Camera:
 
@@ -168,14 +157,17 @@ class Camera:
 
     def focus(self, airplane: Union[Airplane, None]) -> None:
         if isinstance(airplane, Airplane):
+            if not isinstance(self.__airplane, Airplane):
+                self.__previous_infos["scale"] = self.__scale
+                self.__previous_infos["rect"] = self.__rect
+                self.__scale = 0.3
             self.__airplane = airplane
-            self.__previous_infos["scale"] = self.__scale
-            self.__previous_infos["rect"] = self.__rect
-            self.__scale = 0.3
         else:
             self.__airplane = None
-            self.__scale = self.__previous_infos["scale"]
-            self.__rect = self.__previous_infos["rect"]
+            if self.__previous_infos:
+                self.__scale = self.__previous_infos["scale"]
+                self.__rect = self.__previous_infos["rect"]
+            self.__previous_infos.clear()
         self.__update_rect()
 
     def __update_rect(self) -> None:
@@ -199,10 +191,7 @@ class Camera:
                 self.__update_rect()
             else:
                 self.focus(None)
-        try:
-            self.__screen.blit(pygame.transform.smoothscale(self.__surface, self.__screen.get_size()), (0, 0))
-        except ValueError:
-            return
+        self.__screen.blit(pygame.transform.smoothscale(self.__surface, self.__screen.get_size()), (0, 0))
 
     def map_cursor(self, cursor_pos: tuple[int, int]) -> tuple[int, int]:
         return round(self.__scale * cursor_pos[0]) + self.__rect.left, round(self.__scale * cursor_pos[1]) + self.__rect.top
