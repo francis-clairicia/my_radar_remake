@@ -50,7 +50,7 @@ class MyRadar:
         # Load Towers
         self.towers_group = TowerGroup()
         for tower_setup in parser.towers:
-            self.towers_group.add(Tower.from_script_setup(tower_image, tower_setup))
+            self.towers_group.add(Tower.from_script_setup(tower_image, tower_setup, self.rect))
 
         # Camera
         self.camera = Camera(self.screen)

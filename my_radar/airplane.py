@@ -28,6 +28,7 @@ class Airplane(Entity):
         self.__angle = self.__direction.angle_to(Vector2(1, 0))
         self.__hitbox_points = list[Vector2]()
         self.__hitbox_edges = list[Vector2]()
+        self.__hitbox_color = pygame.Color(46, 173, 46)
         self.__update_hitbox()
 
         # Entities
@@ -46,7 +47,6 @@ class Airplane(Entity):
     def update(self, chrono: float) -> None:
         if not self.__take_off:
             self.__take_off = chrono >= self.__delay
-            return
         if self.flying and not self.__update_clock.elapsed_time(self.__refresh_time):
             return
         distance = (self.__arrival - self.__center).length()
@@ -63,7 +63,7 @@ class Airplane(Entity):
         if self.sprite_shown():
             surface.blit(self.__image_airplane, self.__image_airplane.get_rect(center=self.__center))
         if self.hitbox_shown():
-            pygame.draw.polygon(surface, pygame.Color(46, 173, 46), self.__hitbox_points, width=1)
+            pygame.draw.polygon(surface, self.__hitbox_color, self.__hitbox_points, width=1)
 
     def destroy(self) -> None:
         self.__destroyed = True
@@ -89,6 +89,10 @@ class Airplane(Entity):
 
     def get_hitbox_edges(self) -> list[Vector2]:
         return self.__hitbox_edges
+
+    def set_alpha(self, value: float) -> None:
+        self.__image_airplane.set_alpha(value)
+        self.__hitbox_color.a = value
 
     image = property(lambda self: self.__image_airplane)
     rect = property(lambda self: self.image.get_rect(center=self.__center))
