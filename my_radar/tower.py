@@ -3,7 +3,7 @@
 from typing import Sequence
 import pygame
 from pygame.math import Vector2
-from .entity import Entity
+from .entity import Entity, EntityEditor
 from .airplane import Airplane
 
 class TowerArea(pygame.sprite.Sprite):
@@ -39,7 +39,7 @@ class Tower(Entity):
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.sprite_shown():
-            surface.blit(self.__image_tower, self.__image_tower.get_rect(midbottom=self.rect.center))
+            surface.blit(self.image, self.rect)
         if self.hitbox_shown():
             self.__area.draw(surface)
 
@@ -47,7 +47,7 @@ class Tower(Entity):
         for airplane in airplanes_list:
             if not airplane.flying:
                 continue
-            if pygame.sprite.spritecollideany(airplane, self.__area, collided=pygame.sprite.collide_circle) is not None:
+            if any(airplane_in_area(airplane, area) for area in self.__area):
                 self.__airplanes.add(airplane)
                 airplane.towers.add(self)
             else:
@@ -68,9 +68,17 @@ class Tower(Entity):
             if area_out_of_screen:
                 self.__area.add(TowerArea(self.__image_area.radius, self.__area_outline, self.__area_color, **new_area_pos))
 
-    image = property(lambda self: self.__image_area.image)
-    rect = property(lambda self: self.__image_area.rect)
-    radius = property(lambda self: self.__image_area.radius)
+    def set_alpha(self, value: int) -> None:
+        for area in self.__area:
+            area.image.set_alpha(value)
+        self.__image_tower.set_alpha(value)
+        self.__area_color.a = value
+
+    image = property(lambda self: self.__image_tower)
+    rect = property(lambda self: self.__image_tower.get_rect(midbottom=self.__image_area.rect.center))
+
+class TowerEditor(Tower, EntityEditor):
+    pass
 
 class TowerGroup(pygame.sprite.Group):
 
@@ -81,3 +89,20 @@ class TowerGroup(pygame.sprite.Group):
     def draw(self, surface: pygame.Surface) -> None:
         for tower in self.sprites():
             tower.draw(surface)
+
+
+def airplane_in_area(airplane: Airplane, area: TowerArea) -> bool:
+    # segments = [(point, point + edge) for point, edge in zip(airplane.get_hitbox_points(), airplane.get_hitbox_edges())]
+    # area_center = Vector2(area.rect.center)
+    # area_radius = area.radius
+    # for point_1, point_2 in segments:
+    #     distance_p1_center = point_1.distance_to(area_center)
+    #     distance_p2_center = point_2.distance_to(area_center)
+    #     if distance_p1_center <= area_radius or distance_p2_center <= area_radius:
+    #         return True
+    #     direction_p1_p2 = (point_2 - point_1).normalize()
+    #     vector_p1_center = area_center - point_1
+    #     if abs(direction_p1_p2.cross(vector_p1_center)) <= area_radius:
+    #         return True
+    # return False
+    return Vector2(airplane.rect.center).distance_to(area.rect.center) <= area.radius

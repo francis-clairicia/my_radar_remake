@@ -19,7 +19,7 @@ def parse_error_exception(function):
         try:
             output = function(*args, **kwargs)
         except (FileNotFoundError, ScriptParserError) as e:
-            print("{}: {}".format(e.__class__.__name__, str(e)), file=sys.stderr)
+            print("my_radar: {}: {}".format(e.__class__.__name__, str(e)), file=sys.stderr)
             sys.exit(84)
         return output
 
@@ -30,12 +30,12 @@ class ScriptParser:
     EXTENSION = ".rdr"
 
     @parse_error_exception
-    def __init__(self, path: str):
-        if not os.path.isfile(path):
-            raise FileNotFoundError(path)
+    def __init__(self, path: str, raise_error_file_not_found=True):
         extension = os.path.splitext(path)[1]
         if extension != ScriptParser.EXTENSION:
             raise ScriptParserError("Script extension must be '{}', not '{}'".format(ScriptParser.EXTENSION, extension))
+        if not os.path.isfile(path) and raise_error_file_not_found:
+            raise FileNotFoundError(path)
 
         self.__entities = {
             "A": {"list": list(), "size": 6},
@@ -43,8 +43,11 @@ class ScriptParser:
         }
 
         try:
-            with open(path, "r") as file:
-                script = file.read()
+            if os.path.isfile(path):
+                with open(path, "r") as file:
+                    script = file.read()
+            else:
+                script = str()
         except IOError as e:
             raise ScriptParserError("Can't use script file: {}".format(e)) from None
 
@@ -61,5 +64,8 @@ class ScriptParser:
                 raise ScriptLineParserError(path, index, "Expected {} decimal numbers, not {}".format(self.__entities[entity]["size"], size))
             self.__entities[entity]["list"].append(infos)
 
+        self.__filepath = path
+
+    filepath = property(lambda self: self.__filepath)
     airplanes = property(lambda self: self.__entities["A"]["list"])
     towers = property(lambda self: self.__entities["T"]["list"])

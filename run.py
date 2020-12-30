@@ -22,11 +22,13 @@ class MyHelpFormatter(argparse.RawTextHelpFormatter):
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="my_radar", description="Air traffic simulation panel", formatter_class=MyHelpFormatter)
-    parser.add_argument("script", type=ScriptParser, help="Path to a .rdr script file")
+    parser.add_argument("script", help="Path to a .rdr script file")
+    parser.add_argument("-e", "--editor", help="Launch the script editor", action="store_true")
 
     args = parser.parse_args()
+    script = ScriptParser(args.script, raise_error_file_not_found=not args.editor)
 
-    MyRadar(args.script).start()
+    MyRadar(script, editor=args.editor).start()
     return 0
 
 if __name__ == "__main__":

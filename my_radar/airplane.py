@@ -1,48 +1,43 @@
 # -*- coding: Utf-8 -*
 
-from typing import Sequence
+from typing import Union, Sequence
 import pygame
 from pygame.math import Vector2
-from .entity import Entity
+from .entity import Entity, EntityEditor
 from .constants import AIRPLANE_SIZE
 from .clock import Clock
 
 class Airplane(Entity):
 
-    def __init__(self, image: pygame.Surface, departure: Vector2, arrival: Vector2, speed: float, delay: float):
+    def __init__(self, image: pygame.Surface, departure: Vector2, arrival: Vector2, speed: float, delay: float, take_off=False, edit=False):
         super().__init__()
 
         # Textures
-        self.__default_airplane_image = pygame.transform.smoothscale(image, AIRPLANE_SIZE).convert_alpha()
+        self.__default_airplane_image = self.__image_airplane = pygame.transform.smoothscale(image, AIRPLANE_SIZE).convert_alpha()
 
+        self.__edit = bool(edit)
         self.__update_clock = Clock()
-        self.__take_off = self.__land_on = self.__destroyed = False
         self.__refresh_time = 10 #milliseconds
-        self.__departure = departure
-        self.__arrival = arrival
-        self.__center = departure
-        self.__speed = (speed * self.__refresh_time) / 1000
+        self.__center = self.__departure = Vector2(departure)
+        self.__arrival = Vector2(arrival)
+        self.__speed = max((speed * self.__refresh_time) / 1000, 0)
         self.__delay = delay
-        self.__direction = arrival - departure
-        self.__direction.scale_to_length(self.__speed)
-        self.__angle = self.__direction.angle_to(Vector2(1, 0))
+        self.__land_on = self.__destroyed = False
+        self.__take_off = take_off or (delay <= 0)
         self.__hitbox_points = list[Vector2]()
         self.__hitbox_edges = list[Vector2]()
         self.__hitbox_color = pygame.Color(46, 173, 46)
-        self.__update_hitbox()
-
-        # Entities
-        self.__image_airplane = pygame.transform.rotate(self.__default_airplane_image, self.__angle).convert_alpha()
+        self.__update_direction()
 
         # Towers group
         self.__towers = pygame.sprite.Group()
 
     @classmethod
-    def from_script_setup(cls, image: pygame.Surface, line: Sequence[float]):
+    def from_script_setup(cls, image: pygame.Surface, line: Sequence[float], **kwargs):
         departure_x, departure_y, arrival_x, arrival_y, speed, delay = line
         departure = Vector2(departure_x, departure_y)
         arrival = Vector2(arrival_x, arrival_y)
-        return cls(image, departure, arrival, speed, delay)
+        return cls(image, departure, arrival, speed, delay, **kwargs)
 
     def update(self, chrono: float) -> None:
         if not self.__take_off:
@@ -90,15 +85,40 @@ class Airplane(Entity):
     def get_hitbox_edges(self) -> list[Vector2]:
         return self.__hitbox_edges
 
-    def set_alpha(self, value: float) -> None:
+    def set_alpha(self, value: int) -> None:
         self.__image_airplane.set_alpha(value)
         self.__hitbox_color.a = value
 
+    def set_departure(self, point: Union[Vector2, Sequence[float]]) -> None:
+        if not self.__edit:
+            raise AttributeError("can't set attribute")
+        self.__center = self.__departure = Vector2(point)
+        self.__update_direction()
+
+    def set_arrival(self, point: Union[Vector2, Sequence[float]]) -> None:
+        if not self.__edit:
+            raise AttributeError("can't set attribute")
+        self.__arrival = Vector2(point)
+        self.__update_direction()
+
+    def set_speed(self, value: float) -> None:
+        if not self.__edit:
+            raise AttributeError("can't set attribute")
+        self.__speed = max((value * self.__refresh_time) / 1000, 0)
+        self.__direction.scale_to_length(self.__speed)
+
+    def __update_direction(self) -> None:
+        self.__direction = self.__arrival - self.__departure
+        self.__direction.scale_to_length(self.__speed)
+        self.__angle = self.__direction.angle_to(Vector2(1, 0))
+        self.__image_airplane = pygame.transform.rotate(self.__default_airplane_image, self.__angle).convert_alpha()
+        self.__update_hitbox()
+
     image = property(lambda self: self.__image_airplane)
     rect = property(lambda self: self.image.get_rect(center=self.__center))
-    departure = property(lambda self: self.__departure)
-    arrival = property(lambda self: self.__arrival)
-    speed = property(lambda self: self.__speed)
+    departure = property(lambda self: self.__departure, set_departure)
+    arrival = property(lambda self: self.__arrival, set_arrival)
+    speed = property(lambda self: self.__speed, set_speed)
     angle = property(lambda self: self.__angle)
     take_off = property(lambda self: self.__take_off)
     land_on = property(lambda self: self.__land_on)
@@ -107,9 +127,32 @@ class Airplane(Entity):
     towers = property(lambda self: self.__towers)
     in_a_tower_area = property(lambda self: bool(self.__towers))
 
+class AirplaneEditor(Airplane, EntityEditor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, take_off=True, edit=True, **kwargs)
+        self.__arrowhead_rect = pygame.Rect(0, 0, 0, 0)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if self.selected:
+            arrow_color = pygame.Color(0, 0, 150)
+            pygame.draw.aaline(surface, arrow_color, self.departure, self.arrival)
+            arrowhead_semi_angle = 30
+            arrowhead_length = 10
+            line_direction_inverted = self.departure - self.arrival
+            line_direction_inverted.scale_to_length(arrowhead_length)
+            arrowhead = [
+                self.arrival,
+                self.arrival + line_direction_inverted.rotate(arrowhead_semi_angle),
+                self.arrival + line_direction_inverted.rotate(-arrowhead_semi_angle),
+            ]
+            # pygame.draw.polygon(surface, arrow_color, arrowhead)
+            self.__arrowhead_rect = pygame.draw.aalines(surface, arrow_color, True, arrowhead)
+        super().draw(surface)
+
 class AirplaneGroup(pygame.sprite.Group):
 
-    def sprites(self) -> list[Airplane]:
+    def sprites(self) -> list[Union[Airplane, AirplaneEditor]]:
         # pylint: disable=useless-super-delegation
         return super().sprites()
 
@@ -118,6 +161,8 @@ class AirplaneGroup(pygame.sprite.Group):
 
     def draw(self, surface: pygame.Surface) -> None:
         for airplane in self.sprites():
+            if isinstance(airplane, EntityEditor) and airplane.selected:
+                continue
             airplane.draw(surface)
 
     def check_collisions(self) -> None:
