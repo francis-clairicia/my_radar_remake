@@ -107,6 +107,9 @@ class MyRadar:
                             Entity.show_sprite(not Entity.sprite_shown())
                         elif event.key == pygame.K_p:
                             simulation_running = not simulation_running
+                    else:
+                        if event.key == pygame.K_DELETE and self.entity_editor_grp.selected is not None:
+                            self.entity_editor_grp.selected.kill()
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.editor:
                     x, y = self.camera.map_cursor(event.pos)
                     for airplane in self.airplanes_group.sprites():
