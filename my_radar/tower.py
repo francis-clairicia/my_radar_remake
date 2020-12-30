@@ -1,6 +1,6 @@
 # -*- coding: Utf-8 -*
 
-from typing import Sequence
+from typing import Sequence, Union
 import pygame
 from pygame.math import Vector2
 from .entity import Entity, EntityEditor
@@ -10,14 +10,24 @@ class TowerArea(pygame.sprite.Sprite):
 
     def __init__(self, radius: float, outline: int, outline_color: pygame.Color, **position):
         super().__init__()
+        self.__outline = outline
+        self.__outline_color = outline_color
+        self.__position = position
+        self.set_radius(radius)
+
+    def set_center(self, center: Union[Vector2, Sequence[float]]) -> None:
+        self.__position = {"center": center}
+
+    def set_radius(self, radius: float) -> None:
+        radius = float(radius)
         self.__image = pygame.Surface((radius * 2, radius * 2), flags=pygame.SRCALPHA).convert_alpha()
-        self.__rect = self.__image.get_rect(**position)
         self.__radius = radius
-        pygame.draw.ellipse(self.__image, outline_color, self.__image.get_rect(), width=outline)
+        pygame.draw.ellipse(self.__image, self.__outline_color, self.__image.get_rect(), width=self.__outline)
 
     image = property(lambda self: self.__image)
-    rect = property(lambda self: self.__rect)
-    radius = property(lambda self: self.__radius)
+    rect = property(lambda self: self.__image.get_rect(**self.__position))
+    center = property(lambda self: Vector2(self.rect.center), set_center)
+    radius = property(lambda self: self.__radius, set_radius)
 
 class Tower(Entity):
 
@@ -29,7 +39,8 @@ class Tower(Entity):
         self.__area = pygame.sprite.Group()
         self.__image_tower = image.convert_alpha()
         self.__airplanes = pygame.sprite.Group()
-        self.update_area(screen_rect)
+        self.__screen_rect = screen_rect
+        self.update_area()
 
     @classmethod
     def from_script_setup(cls, image: pygame.Surface, line: Sequence[float], screen_rect: pygame.Rect):
@@ -54,7 +65,8 @@ class Tower(Entity):
                 self.__airplanes.remove(airplane)
                 airplane.towers.remove(self)
 
-    def update_area(self, screen_rect: pygame.Rect) -> None:
+    def update_area(self) -> None:
+        screen_rect = self.__screen_rect
         self.__area.empty()
         self.__area.add(self.__image_area)
         area_rect = self.__image_area.rect
@@ -76,9 +88,42 @@ class Tower(Entity):
 
     image = property(lambda self: self.__image_tower)
     rect = property(lambda self: self.__image_tower.get_rect(midbottom=self.__image_area.rect.center))
+    area = property(lambda self: self.__image_area)
 
 class TowerEditor(Tower, EntityEditor):
-    pass
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__update_point = None
+
+    def on_click(self, mouse_pos: tuple[int, int]) -> bool:
+        if not self.selected:
+            return False
+
+        value_between = lambda x, min_x, max_x: x >= min_x and x <= max_x
+
+        if value_between(self.area.center.distance_to(mouse_pos), round(0.9 * self.area.radius), round(1.1 * self.area.radius)):
+            self.__update_point = self.__update_area_radius
+        elif self.rect.collidepoint(*mouse_pos):
+            self.__update_point = self.__update_area_center
+        else:
+            self.__update_point = None
+        return callable(self.__update_point)
+
+    def on_move(self, mouse_pos: tuple[int, int]) -> None:
+        if callable(self.__update_point):
+            self.__update_point(mouse_pos)
+        else:
+            self.__update_area_center(mouse_pos)
+
+    def __update_area_center(self, mouse_pos: tuple[int, int]) -> None:
+        self.area.center = mouse_pos
+        self.update_area()
+
+    def __update_area_radius(self, mouse_pos: tuple[int, int]) -> None:
+        self.area.radius = self.area.center.distance_to(mouse_pos)
+        self.update_area()
+
 
 class TowerGroup(pygame.sprite.Group):
 
@@ -105,4 +150,4 @@ def airplane_in_area(airplane: Airplane, area: TowerArea) -> bool:
     #     if abs(direction_p1_p2.cross(vector_p1_center)) <= area_radius:
     #         return True
     # return False
-    return Vector2(airplane.rect.center).distance_to(area.rect.center) <= area.radius
+    return Vector2(airplane.rect.center).distance_to(area.center) <= area.radius

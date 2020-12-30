@@ -35,30 +35,51 @@ class EntityEditorSelector(pygame.sprite.GroupSingle):
 
 class EntityEditor(Entity):
 
+    def on_click(self, mouse_pos: tuple[int, int]) -> bool:
+        # pylint: disable=unused-argument
+        return False
+
+    def on_move(self, mouse_pos: tuple[int, int]) -> None:
+        pass
+
     @property
     def selected(self) -> bool:
         return any(isinstance(group, EntityEditorSelector) for group in self.groups())
 
 class EntityEditorGroup(pygame.sprite.Group):
 
-    def __init__(self, *sprites, alpha_threshold=255):
+    def __init__(self, *sprites):
         super().__init__(*sprites)
         self.__selected = None
         self.__selector = EntityEditorSelector()
-        self.__alpha_threshold = int(alpha_threshold)
+        self.__active = False
+        self.__moving = False
 
     def sprites(self) -> list[EntityEditor]:
         # pylint: disable=useless-super-delegation
         return super().sprites()
 
-    def select(self, entity: Union[Entity, None]) -> None:
-        if isinstance(self.__selected, EntityEditor):
-            self.selected.set_alpha(255)
+    def handle_event(self, event_type: int, mouse_pos: tuple[int, int]) -> None:
+        if event_type == pygame.MOUSEBUTTONDOWN and self.selected is not None:
+            if self.selected.on_click(mouse_pos):
+                self.__active = True
+        elif event_type == pygame.MOUSEBUTTONUP:
+            self.__active = self.__moving = False
+        elif event_type == pygame.MOUSEMOTION and self.__active:
+            self.__moving = True
+            self.selected.on_move(mouse_pos)
+
+    def select(self, entity: Union[Entity, None], active=False) -> None:
         self.__selector.empty()
         if isinstance(entity, EntityEditor):
             self.__selector.add(entity)
-            entity.set_alpha(self.__alpha_threshold)
+            if active:
+                self.__active = self.__moving = True
 
     @property
     def selected(self) -> Union[EntityEditor, None]:
         return self.__selector.sprite
+
+    @property
+    def moving(self) -> bool:
+        return self.__moving

@@ -17,6 +17,7 @@ from .entity import Entity, EntityEditor, EntityEditorGroup
 from .airplane import Airplane, AirplaneGroup, AirplaneEditor
 from .tower import Tower, TowerGroup, TowerEditor
 from .parser import ScriptParser
+from .editor import EditorToolbox
 
 class MyRadar:
 
@@ -24,14 +25,14 @@ class MyRadar:
         status = pygame.init()
         if status[1] > 0:
             sys.exit("Error on pygame initialization ({} module{} failed to load)".format(status[1], "s" if status[1] > 1 else ""))
-        self.screen = pygame.display.set_mode((1920, 1080), flags=pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode((1920, 1080), flags=pygame.FULLSCREEN|pygame.HWSURFACE|pygame.DOUBLEBUF)
         title = "MyRadar Remake"
         if editor:
             title = "{} - Editor | file: {}".format(title, os.path.basename(parser.filepath))
         pygame.display.set_caption(title)
 
         # Show Loading message:
-        self.screen.fill("black")
+        self.screen.fill(BLACK)
         text_loading = pygame.font.SysFont("calibri", 50).render("Loading...", True, "white")
         self.screen.blit(text_loading, text_loading.get_rect(center=self.rect.center))
         pygame.display.flip()
@@ -50,8 +51,9 @@ class MyRadar:
         self.white_mask = pygame.Surface(self.screen.get_size(), flags=pygame.SRCALPHA).convert_alpha()
         self.white_mask.fill(pygame.Color(255, 255, 255, alpha_threshold))
 
+        # Editor
         self.editor = editor
-        self.entity_editor_grp = EntityEditorGroup(alpha_threshold=alpha_threshold)
+        self.entity_editor_grp = EntityEditorGroup()
 
         # Load Airplanes
         self.airplanes_group = AirplaneGroup()
@@ -60,9 +62,8 @@ class MyRadar:
             airplane = AirplaneType.from_script_setup(airplane_image, airplane_setup)
             self.airplanes_group.add(airplane)
             if self.editor:
-                airplane.set_alpha(alpha_threshold)
                 airplane.add(self.entity_editor_grp)
-        self.airplanes_list = self.airplanes_group.sprites().copy()
+        self.airplanes_list = self.airplanes_group.sprites().copy() if not self.editor else list[Airplane]()
 
         # Load Towers
         self.towers_group = TowerGroup()
@@ -71,8 +72,10 @@ class MyRadar:
             tower = TowerType.from_script_setup(tower_image, tower_setup, self.rect)
             self.towers_group.add(tower)
             if self.editor:
-                tower.set_alpha(alpha_threshold)
                 tower.add(self.entity_editor_grp)
+
+        # Editor toolbox
+        self.toolbox = EditorToolbox(airplane_image, tower_image, self.airplanes_group, self.towers_group)
 
         # Camera
         self.camera = Camera(self.screen)
@@ -97,21 +100,23 @@ class MyRadar:
                     loop = False
                     break
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_l and not self.editor:
-                        Entity.show_hitbox(not Entity.hitbox_shown())
-                    elif event.key == pygame.K_s and not self.editor:
-                        Entity.show_sprite(not Entity.sprite_shown())
-                    elif event.key == pygame.K_p and not self.editor:
-                        simulation_running = not simulation_running
+                    if not self.editor:
+                        if event.key == pygame.K_l:
+                            Entity.show_hitbox(not Entity.hitbox_shown())
+                        elif event.key == pygame.K_s:
+                            Entity.show_sprite(not Entity.sprite_shown())
+                        elif event.key == pygame.K_p:
+                            simulation_running = not simulation_running
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.editor:
                     x, y = self.camera.map_cursor(event.pos)
                     for airplane in self.airplanes_group.sprites():
                         if airplane.rect.collidepoint(x, y):
                             self.camera.focus(airplane)
                             break
-                elif self.editor:
+                if self.editor:
                     self.handle_editor_event(event)
-                self.camera.handle_event(event)
+                else:
+                    self.camera.handle_event(event)
             if not self.editor and simulation_running:
                 self.towers_group.update(self.airplanes_group.sprites())
                 self.airplanes_group.check_collisions()
@@ -142,6 +147,8 @@ class MyRadar:
             # Draw chrono
             text_chrono = self.font.render(time.strftime("%H:%M:%S", time.gmtime(self.chrono)), True, WHITE)
             self.screen.blit(text_chrono, text_chrono.get_rect(top=self.rect.top + 10, right=self.rect.right - 10))
+        else:
+            self.toolbox.draw(self.screen)
 
     def show_results(self) -> None:
         land_on = 0
@@ -154,7 +161,7 @@ class MyRadar:
         print("Airplanes destroyed:", destroyed)
 
     def handle_editor_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and not self.camera.moving:
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and not self.camera.moving and not self.entity_editor_grp.moving:
             x, y = self.camera.map_cursor(event.pos)
             previous = self.entity_editor_grp.selected
             self.entity_editor_grp.select(None)
@@ -164,3 +171,8 @@ class MyRadar:
                         continue
                     self.entity_editor_grp.select(entity)
                     break
+        self.toolbox.handle_event(event, self.entity_editor_grp, self.rect)
+        if not self.entity_editor_grp.moving:
+            self.camera.handle_event(event)
+        if (event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP] and event.button == 1) or event.type == pygame.MOUSEMOTION and event.buttons[0]:
+            self.entity_editor_grp.handle_event(event.type, self.camera.map_cursor(pygame.mouse.get_pos()))

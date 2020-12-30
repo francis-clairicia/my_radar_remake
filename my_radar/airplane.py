@@ -1,6 +1,7 @@
 # -*- coding: Utf-8 -*
 
 from typing import Union, Sequence
+from functools import wraps
 import pygame
 from pygame.math import Vector2
 from .entity import Entity, EntityEditor
@@ -127,11 +128,22 @@ class Airplane(Entity):
     towers = property(lambda self: self.__towers)
     in_a_tower_area = property(lambda self: bool(self.__towers))
 
+def init_decorator(function):
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        kwargs["edit"] = kwargs["take_off"] = True
+        return function(*args, **kwargs)
+
+    return wrapper
+
 class AirplaneEditor(Airplane, EntityEditor):
 
+    @init_decorator
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, take_off=True, edit=True, **kwargs)
+        super().__init__(*args, **kwargs)
         self.__arrowhead_rect = pygame.Rect(0, 0, 0, 0)
+        self.__update_point = None
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.selected:
@@ -149,6 +161,21 @@ class AirplaneEditor(Airplane, EntityEditor):
             # pygame.draw.polygon(surface, arrow_color, arrowhead)
             self.__arrowhead_rect = pygame.draw.aalines(surface, arrow_color, True, arrowhead)
         super().draw(surface)
+
+    def on_click(self, mouse_pos: tuple[int, int]) -> bool:
+        if not self.selected:
+            return False
+        if self.rect.collidepoint(*mouse_pos):
+            self.__update_point = self.set_departure
+        elif self.__arrowhead_rect.collidepoint(*mouse_pos):
+            self.__update_point = self.set_arrival
+        else:
+            self.__update_point = None
+        return callable(self.__update_point)
+
+    def on_move(self, mouse_pos: tuple[int, int]) -> None:
+        if self.selected and callable(self.__update_point):
+            self.__update_point(mouse_pos)
 
 class AirplaneGroup(pygame.sprite.Group):
 
