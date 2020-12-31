@@ -3,6 +3,7 @@
 import os
 import sys
 from functools import wraps
+from .entity import EntityGroup
 
 class ScriptParserError(BaseException):
     pass
@@ -65,6 +66,26 @@ class ScriptParser:
             self.__entities[entity]["list"].append(infos)
 
         self.__filepath = path
+
+    def update(self, *groups: EntityGroup) -> None:
+        for group in groups:
+            if group.letter not in self.__entities:
+                continue
+            self.__entities[group.letter]["list"].clear()
+            for entity in group.sprites():
+                self.__entities[group.letter]["list"].append(entity.get_setup())
+
+    def save_in_file(self) -> bool:
+        try:
+            with open(self.__filepath, "w") as file:
+                for entity_letter, entity_dict in self.__entities.items():
+                    entity_list = entity_dict["list"]
+                    for line in entity_list:
+                        line = [round(v, 1) for v in line]
+                        print(entity_letter, *line, file=file)
+        except IOError:
+            return False
+        return True
 
     filepath = property(lambda self: self.__filepath)
     airplanes = property(lambda self: self.__entities["A"]["list"])

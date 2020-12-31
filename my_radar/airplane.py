@@ -4,7 +4,7 @@ from typing import Union, Sequence
 from functools import wraps
 import pygame
 from pygame.math import Vector2
-from .entity import Entity, EntityEditor
+from .entity import Entity, EntityEditor, EntityGroup
 from .constants import AIRPLANE_SIZE
 from .clock import Clock
 
@@ -21,7 +21,7 @@ class Airplane(Entity):
         self.__refresh_time = 10 #milliseconds
         self.__center = self.__departure = Vector2(departure)
         self.__arrival = Vector2(arrival)
-        self.__speed = max((speed * self.__refresh_time) / 1000, 0)
+        self.__speed = max(speed, 0)
         self.__delay = delay
         self.__land_on = self.__destroyed = False
         self.__take_off = take_off or (delay <= 0)
@@ -39,6 +39,10 @@ class Airplane(Entity):
         departure = Vector2(departure_x, departure_y)
         arrival = Vector2(arrival_x, arrival_y)
         return cls(image, departure, arrival, speed, delay, **kwargs)
+
+    def get_setup(self) -> list[float]:
+        # pylint: disable=no-member
+        return [*(self.__departure.xy), *(self.__arrival.xy), self.speed, self.__delay]
 
     def update(self, chrono: float) -> None:
         if not self.__take_off:
@@ -105,12 +109,17 @@ class Airplane(Entity):
     def set_speed(self, value: float) -> None:
         if not self.__edit:
             raise AttributeError("can't set attribute")
-        self.__speed = max((value * self.__refresh_time) / 1000, 0)
-        self.__direction.scale_to_length(self.__speed)
+        self.__speed = max(value, 0)
+        self.__update_direction()
+
+    def set_delay(self, value: float) -> None:
+        if not self.__edit:
+            raise AttributeError("can't set attribute")
+        self.__delay = float(value)
 
     def __update_direction(self) -> None:
         self.__direction = self.__arrival - self.__departure
-        self.__direction.scale_to_length(self.__speed)
+        self.__direction.scale_to_length((self.__speed * self.__refresh_time) / 1000)
         self.__angle = self.__direction.angle_to(Vector2(1, 0))
         self.__image_airplane = pygame.transform.rotate(self.__default_airplane_image, self.__angle).convert_alpha()
         self.__update_hitbox()
@@ -120,6 +129,7 @@ class Airplane(Entity):
     departure = property(lambda self: self.__departure, set_departure)
     arrival = property(lambda self: self.__arrival, set_arrival)
     speed = property(lambda self: self.__speed, set_speed)
+    delay = property(lambda self: self.__delay, set_delay)
     angle = property(lambda self: self.__angle)
     take_off = property(lambda self: self.__take_off)
     land_on = property(lambda self: self.__land_on)
@@ -143,12 +153,15 @@ class AirplaneEditor(Airplane, EntityEditor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__arrowhead_rect = pygame.Rect(0, 0, 0, 0)
+        self.__font = pygame.font.SysFont("calibri", 15, bold=True)
         self.__update_point = None
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.selected:
-            arrow_color = pygame.Color(0, 0, 150)
-            pygame.draw.aaline(surface, arrow_color, self.departure, self.arrival)
+            text_color = arrow_color = pygame.Color(0, 0, 150)
+
+            #Draw arrow
+            arrow_rect = pygame.draw.aaline(surface, arrow_color, self.departure, self.arrival)
             arrowhead_semi_angle = 30
             arrowhead_length = 10
             line_direction_inverted = self.departure - self.arrival
@@ -158,8 +171,18 @@ class AirplaneEditor(Airplane, EntityEditor):
                 self.arrival + line_direction_inverted.rotate(arrowhead_semi_angle),
                 self.arrival + line_direction_inverted.rotate(-arrowhead_semi_angle),
             ]
-            # pygame.draw.polygon(surface, arrow_color, arrowhead)
             self.__arrowhead_rect = pygame.draw.aalines(surface, arrow_color, True, arrowhead)
+
+            # Draw values
+            text_angle = self.angle
+            if abs(text_angle) > 90:
+                text_angle = 180 + text_angle
+            text_move_angle = text_angle + 90
+            text_move_offset = Vector2(15, 0).rotate(-text_move_angle)
+            text_speed = pygame.transform.rotate(self.__font.render("Speed: {}".format(round(self.speed, 1)), True, text_color), text_angle)
+            text_delay = pygame.transform.rotate(self.__font.render("Delay: {}sec".format(round(self.delay, 1)), True, text_color), text_angle)
+            surface.blit(text_speed, text_speed.get_rect(center=(Vector2(arrow_rect.center) + text_move_offset)))
+            surface.blit(text_delay, text_delay.get_rect(center=(Vector2(arrow_rect.center) - text_move_offset)))
         super().draw(surface)
 
     def on_click(self, mouse_pos: tuple[int, int]) -> bool:
@@ -177,7 +200,36 @@ class AirplaneEditor(Airplane, EntityEditor):
         if self.selected and callable(self.__update_point):
             self.__update_point(mouse_pos)
 
-class AirplaneGroup(pygame.sprite.Group):
+    def on_key_press(self, key: int) -> bool:
+        if key in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN]:
+            if key == pygame.K_LEFT:
+                self.speed -= 1
+            elif key == pygame.K_RIGHT:
+                self.speed += 1
+            elif key == pygame.K_UP:
+                self.delay += 0.1
+            elif key == pygame.K_DOWN:
+                self.delay -= 0.1
+            return True
+        return False
+
+    @staticmethod
+    def get_action_dict() -> dict[str, dict[str, str]]:
+        return {
+            "airplane": {
+                "Left arrow": "Decrease speed value",
+                "Right arrow": "Increase speed value",
+                "Up arrow": "Increase delay value",
+                "Down arrow": "Decrease delay value",
+                "Click on airplane's sprite + Move": "Change airplane's departure point",
+                "Click on airplane's arrowhead + Move": "Change airplane's arrival point"
+            }
+        }
+
+class AirplaneGroup(EntityGroup):
+
+    def __init__(self):
+        super().__init__("A")
 
     def sprites(self) -> list[Union[Airplane, AirplaneEditor]]:
         # pylint: disable=useless-super-delegation
@@ -185,12 +237,6 @@ class AirplaneGroup(pygame.sprite.Group):
 
     def get_airplanes_not_in_tower_area(self) -> tuple[Airplane, ...]:
         return tuple(filter(lambda airplane: not airplane.in_a_tower_area, self.sprites()))
-
-    def draw(self, surface: pygame.Surface) -> None:
-        for airplane in self.sprites():
-            if isinstance(airplane, EntityEditor) and airplane.selected:
-                continue
-            airplane.draw(surface)
 
     def check_collisions(self) -> None:
         airplanes_list = self.get_airplanes_not_in_tower_area()

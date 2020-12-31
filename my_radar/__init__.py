@@ -17,7 +17,7 @@ from .entity import Entity, EntityEditor, EntityEditorGroup
 from .airplane import Airplane, AirplaneGroup, AirplaneEditor
 from .tower import Tower, TowerGroup, TowerEditor
 from .parser import ScriptParser
-from .editor import EditorToolbox
+from .editor import EditorToolbox, EditorSideBoard
 
 class MyRadar:
 
@@ -30,6 +30,7 @@ class MyRadar:
         if editor:
             title = "{} - Editor | file: {}".format(title, os.path.basename(parser.filepath))
         pygame.display.set_caption(title)
+        pygame.key.set_repeat(500, 50)
 
         # Show Loading message:
         self.screen.fill(BLACK)
@@ -50,6 +51,10 @@ class MyRadar:
         alpha_threshold = 125
         self.white_mask = pygame.Surface(self.screen.get_size(), flags=pygame.SRCALPHA).convert_alpha()
         self.white_mask.fill(pygame.Color(255, 255, 255, alpha_threshold))
+        self.black_mask = pygame.Surface(self.screen.get_size(), flags=pygame.SRCALPHA).convert_alpha()
+        self.black_mask.fill(pygame.Color(0, 0, 0, alpha_threshold))
+
+        self.parser = parser
 
         # Editor
         self.editor = editor
@@ -74,8 +79,12 @@ class MyRadar:
             if self.editor:
                 tower.add(self.entity_editor_grp)
 
-        # Editor toolbox
+        # Editor stuff
         self.toolbox = EditorToolbox(airplane_image, tower_image, self.airplanes_group, self.towers_group)
+        self.sideboard = EditorSideBoard(AirplaneEditor.get_action_dict(), TowerEditor.get_action_dict())
+        # self.sideboard = EditorSideBoard()
+        self.modified = False
+        self.show_editor_stuff = True
 
         # Camera
         self.camera = Camera(self.screen)
@@ -99,17 +108,13 @@ class MyRadar:
                 if (event.type == pygame.QUIT) or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                     loop = False
                     break
-                if event.type == pygame.KEYDOWN:
-                    if not self.editor:
-                        if event.key == pygame.K_l:
-                            Entity.show_hitbox(not Entity.hitbox_shown())
-                        elif event.key == pygame.K_s:
-                            Entity.show_sprite(not Entity.sprite_shown())
-                        elif event.key == pygame.K_p:
-                            simulation_running = not simulation_running
-                    else:
-                        if event.key == pygame.K_DELETE and self.entity_editor_grp.selected is not None:
-                            self.entity_editor_grp.selected.kill()
+                if event.type == pygame.KEYDOWN and not self.editor:
+                    if event.key == pygame.K_l:
+                        Entity.show_hitbox(not Entity.hitbox_shown())
+                    elif event.key == pygame.K_s:
+                        Entity.show_sprite(not Entity.sprite_shown())
+                    elif event.key == pygame.K_p:
+                        simulation_running = not simulation_running
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not self.editor:
                     x, y = self.camera.map_cursor(event.pos)
                     for airplane in self.airplanes_group.sprites():
@@ -136,8 +141,8 @@ class MyRadar:
         self.airplanes_group.draw(self.screen)
         if self.editor:
             self.screen.blit(self.white_mask, (0, 0))
-        if isinstance(self.entity_editor_grp.selected, Entity):
-            self.entity_editor_grp.selected.draw(self.screen)
+            if isinstance(self.entity_editor_grp.selected, Entity):
+                self.entity_editor_grp.selected.draw(self.screen)
 
         # Set zoom scale
         self.camera.update()
@@ -150,8 +155,20 @@ class MyRadar:
             # Draw chrono
             text_chrono = self.font.render(time.strftime("%H:%M:%S", time.gmtime(self.chrono)), True, WHITE)
             self.screen.blit(text_chrono, text_chrono.get_rect(top=self.rect.top + 10, right=self.rect.right - 10))
-        else:
+        elif self.show_editor_stuff and not self.entity_editor_grp.moving:
             self.toolbox.draw(self.screen)
+            text_script_filepath = "File: {}".format(os.path.basename(self.parser.filepath))
+            if self.modified:
+                text_script_filepath += " - Modified"
+            text_script_filepath = self.font.render(text_script_filepath, True, "black")
+            w, h = text_script_filepath.get_size()
+            box_rect = pygame.Surface((w + 20, h + 20)).get_rect(left=self.rect.left + 20, bottom=self.rect.bottom - 20)
+            pygame.draw.rect(self.screen, "white", box_rect)
+            pygame.draw.rect(self.screen, "black", box_rect, width=2)
+            self.screen.blit(text_script_filepath, text_script_filepath.get_rect(center=box_rect.center))
+            if self.sideboard.is_shown():
+                self.screen.blit(self.black_mask, (0, 0))
+            self.sideboard.draw(self.screen)
 
     def show_results(self) -> None:
         land_on = 0
@@ -164,18 +181,41 @@ class MyRadar:
         print("Airplanes destroyed:", destroyed)
 
     def handle_editor_event(self, event: pygame.event.Event) -> None:
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and not self.camera.moving and not self.entity_editor_grp.moving:
-            x, y = self.camera.map_cursor(event.pos)
-            previous = self.entity_editor_grp.selected
-            self.entity_editor_grp.select(None)
-            for entity in self.entity_editor_grp.sprites():
-                if entity.rect.collidepoint(x, y):
-                    if entity is previous:
-                        continue
-                    self.entity_editor_grp.select(entity)
-                    break
-        self.toolbox.handle_event(event, self.entity_editor_grp, self.rect)
-        if not self.entity_editor_grp.moving:
+        if not self.modified:
+            self.modified = self.entity_editor_grp.moving
+        if not self.camera.moving and not self.entity_editor_grp.moving:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_F12:
+                    self.show_editor_stuff = not self.show_editor_stuff
+                elif event.key == pygame.K_DELETE and self.entity_editor_grp.selected is not None:
+                    self.entity_editor_grp.selected.kill()
+                    self.modified = True
+                elif event.key == pygame.K_s and event.mod & (pygame.KMOD_LCTRL | pygame.KMOD_RCTRL):
+                    self.save_setup()
+                if self.entity_editor_grp.selected is not None and self.entity_editor_grp.selected.on_key_press(event.key):
+                    self.modified = True
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if not self.toolbox.is_shown() and not self.sideboard.is_shown():
+                    x, y = self.camera.map_cursor(event.pos)
+                    previous = self.entity_editor_grp.selected
+                    self.entity_editor_grp.select(None)
+                    for entity in self.entity_editor_grp.sprites():
+                        if entity.rect.collidepoint(x, y):
+                            if entity is previous:
+                                continue
+                            self.entity_editor_grp.select(entity)
+                            break
+        if self.show_editor_stuff and not self.entity_editor_grp.moving:
+            if not self.sideboard.is_shown():
+                self.toolbox.handle_event(event, self.entity_editor_grp, self.rect)
+            if not self.toolbox.is_shown():
+                self.sideboard.handle_event(event, self.entity_editor_grp, self.rect)
+        if not self.entity_editor_grp.moving and not self.sideboard.is_shown() and not self.toolbox.is_shown():
             self.camera.handle_event(event)
         if (event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP] and event.button == 1) or event.type == pygame.MOUSEMOTION and event.buttons[0]:
             self.entity_editor_grp.handle_event(event.type, self.camera.map_cursor(pygame.mouse.get_pos()))
+
+    def save_setup(self) -> None:
+        self.parser.update(self.airplanes_group, self.towers_group)
+        if self.parser.save_in_file():
+            self.modified = False

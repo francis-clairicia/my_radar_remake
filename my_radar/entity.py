@@ -30,6 +30,9 @@ class Entity(pygame.sprite.Sprite):
     def set_alpha(self, value: int) -> None:
         pass
 
+    def get_setup(self) -> list[float]:
+        return list()
+
 class EntityEditorSelector(pygame.sprite.GroupSingle):
     pass
 
@@ -42,9 +45,31 @@ class EntityEditor(Entity):
     def on_move(self, mouse_pos: tuple[int, int]) -> None:
         pass
 
+    def on_key_press(self, key: int) -> bool:
+        # pylint: disable=unused-argument
+        return False
+
     @property
     def selected(self) -> bool:
         return any(isinstance(group, EntityEditorSelector) for group in self.groups())
+
+class EntityGroup(pygame.sprite.Group):
+
+    def __init__(self, letter: str):
+        super().__init__()
+        self.__letter = letter
+
+    def sprites(self) -> list[Union[Entity, EntityEditor]]:
+        # pylint: disable=useless-super-delegation
+        return super().sprites()
+
+    def draw(self, surface: pygame.Surface) -> None:
+        for entity in self.sprites():
+            if isinstance(entity, EntityEditor) and entity.selected:
+                continue
+            entity.draw(surface)
+
+    letter = property(lambda self: self.__letter)
 
 class EntityEditorGroup(pygame.sprite.Group):
 

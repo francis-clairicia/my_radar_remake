@@ -3,7 +3,7 @@
 from typing import Sequence, Union
 import pygame
 from pygame.math import Vector2
-from .entity import Entity, EntityEditor
+from .entity import Entity, EntityEditor, EntityGroup
 from .airplane import Airplane
 
 class TowerArea(pygame.sprite.Sprite):
@@ -28,6 +28,7 @@ class TowerArea(pygame.sprite.Sprite):
     rect = property(lambda self: self.__image.get_rect(**self.__position))
     center = property(lambda self: Vector2(self.rect.center), set_center)
     radius = property(lambda self: self.__radius, set_radius)
+    color = property(lambda self: self.__outline_color)
 
 class Tower(Entity):
 
@@ -47,6 +48,10 @@ class Tower(Entity):
         center_x, center_y, radius = line
         center = Vector2(center_x, center_y)
         return cls(image, center, radius, screen_rect)
+
+    def get_setup(self) -> list[float]:
+        # pylint: disable=no-member
+        return [*(self.area.center.xy), self.area.radius]
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.sprite_shown():
@@ -95,6 +100,14 @@ class TowerEditor(Tower, EntityEditor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__update_point = None
+        self.__font = pygame.font.SysFont("calibri", 15, bold=True)
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if self.selected:
+            text_radius = self.__font.render(str(round(self.area.radius, 1)), True, self.area.color)
+            line_rect = pygame.draw.line(surface, self.area.color, self.area.center, self.area.rect.midright, width=2)
+            surface.blit(text_radius, text_radius.get_rect(centerx=line_rect.centerx, bottom=line_rect.top - 5))
+        super().draw(surface)
 
     def on_click(self, mouse_pos: tuple[int, int]) -> bool:
         if not self.selected:
@@ -124,16 +137,24 @@ class TowerEditor(Tower, EntityEditor):
         self.area.radius = self.area.center.distance_to(mouse_pos)
         self.update_area()
 
+    @staticmethod
+    def get_action_dict() -> dict[str, dict[str, str]]:
+        return {
+            "tower": {
+                "Click on tower's sprite + Move": "Change tower's area center",
+                "Click on tower's area circle + Move": "Change tower's area raidus"
+            }
+        }
 
-class TowerGroup(pygame.sprite.Group):
 
-    def sprites(self) -> list[Tower]:
+class TowerGroup(EntityGroup):
+
+    def __init__(self):
+        super().__init__("T")
+
+    def sprites(self) -> list[Union[Tower, TowerEditor]]:
         # pylint: disable=useless-super-delegation
         return super().sprites()
-
-    def draw(self, surface: pygame.Surface) -> None:
-        for tower in self.sprites():
-            tower.draw(surface)
 
 
 def airplane_in_area(airplane: Airplane, area: TowerArea) -> bool:

@@ -16,10 +16,11 @@ class Camera:
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEWHEEL:
+            print(event)
             new_scale = self.__scale - (event.y) / 10
             if new_scale >= 0.1 and new_scale <= 1:
                 self.__scale = new_scale
-                self.__rect.center = self.map_cursor(pygame.mouse.get_pos())
+                self.__rect.center = pygame.mouse.get_pos()
                 self.__update_rect()
         elif event.type == pygame.MOUSEMOTION and event.buttons[0] and not isinstance(self.__airplane, Airplane):
             self.__moving = True
