@@ -53,6 +53,12 @@ class Tower(Entity):
         # pylint: disable=no-member
         return [*(self.area.center.xy), self.area.radius]
 
+    def load_setup(self, line: list[float]) -> None:
+        center_x, center_y, radius = line
+        self.__image_area.set_center((center_x, center_y))
+        self.__image_area.set_radius(radius)
+        self.update_area()
+
     def draw(self, surface: pygame.Surface) -> None:
         if self.sprite_shown():
             surface.blit(self.image, self.rect)
@@ -101,6 +107,15 @@ class TowerEditor(Tower, EntityEditor):
         super().__init__(*args, **kwargs)
         self.__update_point = None
         self.__font = pygame.font.SysFont("calibri", 15, bold=True)
+
+    def __repr__(self) -> str:
+        return "<{} center={} radius={}>".format(
+            self.__class__.__name__,
+            (self.area.center.x, self.area.center.y),
+            self.area.radius
+        )
+
+    __str__ = __repr__
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.selected:

@@ -67,6 +67,8 @@ class EditorToolbox:
             self.__buttons.append(EditorToolboxButton(width, height, image, entity, group, left=left, centery=centery))
             left += width + 20
 
+        self.__entity_added = None
+
     def draw(self, surface: pygame.Surface) -> None:
         if self.__show:
             self.__rect.width = surface.get_width()
@@ -97,11 +99,17 @@ class EditorToolbox:
                         break
                     if button.entity is TowerEditor:
                         entity = TowerEditor(button.image, Vector2(event.pos), 100, screen_rect)
+                        break
             if isinstance(entity, EntityEditor):
+                entity.group = button.group
                 entity.add(button.group, entity_editor_grp)
                 entity.on_click(event.pos)
                 entity_editor_grp.select(entity, active=True)
                 self.__show = False
+                self.__entity_added = entity
+        if isinstance(self.__entity_added, EntityEditor):
+            entity_editor_grp.history.action_add(self.__entity_added)
+            self.__entity_added = None
 
     def is_shown(self) -> bool:
         return self.__show
@@ -209,6 +217,8 @@ class EditorSideBoard:
                 "F12": "Show/hide editor stuff",
                 "Delete": "Remove selected entity",
                 "Ctrl+S": "Save in file",
+                "Ctrl+Z": "Undo modification",
+                "Ctrl+Y": "Redo modification"
             },
             "Mouse actions": {
                 "Click on entity": "Select entity",

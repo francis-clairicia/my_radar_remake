@@ -44,6 +44,11 @@ class Airplane(Entity):
         # pylint: disable=no-member
         return [*(self.__departure.xy), *(self.__arrival.xy), self.speed, self.__delay]
 
+    def load_setup(self, line: list[float]) -> None:
+        self.__departure.x, self.__departure.y, self.__arrival.x, self.__arrival.y, self.__speed, self.__delay = line
+        self.__center = self.__departure
+        self.__update_direction()
+
     def update(self, chrono: float) -> None:
         if not self.__take_off:
             self.__take_off = chrono >= self.__delay
@@ -156,6 +161,17 @@ class AirplaneEditor(Airplane, EntityEditor):
         self.__arrowhead_rect = pygame.Rect(0, 0, 0, 0)
         self.__font = pygame.font.SysFont("calibri", 15, bold=True)
         self.__update_point = None
+
+    def __repr__(self) -> str:
+        return "<{} departure={} arrival={} speed={} delay={}>".format(
+            self.__class__.__name__,
+            (self.departure.x, self.departure.y),
+            (self.arrival.x, self.arrival.y),
+            self.speed,
+            self.delay,
+        )
+
+    __str__ = __repr__
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.selected:
