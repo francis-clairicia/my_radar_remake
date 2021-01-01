@@ -17,7 +17,7 @@ from .entity import Entity, EntityEditor, EntityEditorGroup
 from .airplane import Airplane, AirplaneGroup, AirplaneEditor
 from .tower import Tower, TowerGroup, TowerEditor
 from .parser import ScriptParser
-from .editor import EditorToolbox, EditorSideBoard
+from .editor import EditorToolbox, EditorSideBoard, EditorActionFormatter
 
 class MyRadar:
 
@@ -80,8 +80,12 @@ class MyRadar:
                 tower.add(self.entity_editor_grp)
 
         # Editor stuff
+        action_formatter = EditorActionFormatter.from_entity_editor
         self.toolbox = EditorToolbox(airplane_image, tower_image, self.airplanes_group, self.towers_group)
-        self.sideboard = EditorSideBoard(AirplaneEditor.get_action_dict(), TowerEditor.get_action_dict())
+        self.sideboard = EditorSideBoard(
+            action_formatter(AirplaneEditor, select=True),
+            action_formatter(TowerEditor, select=True)
+        )
         # self.sideboard = EditorSideBoard()
         self.modified = False
         self.show_editor_stuff = True
@@ -147,11 +151,14 @@ class MyRadar:
         # Set zoom scale
         self.camera.update()
 
+        # Draw framerate
+        text_framerate = self.font.render("{} FPS".format(int(self.clock.get_fps())), True, WHITE)
         if not self.editor:
-            # Draw framerate
-            text_framerate = self.font.render("{} FPS".format(int(self.clock.get_fps())), True, WHITE)
             self.screen.blit(text_framerate, text_framerate.get_rect(top=self.rect.top + 10, left=self.rect.left + 10))
+        else:
+            self.screen.blit(text_framerate, text_framerate.get_rect(bottom=self.rect.bottom - 10, right=self.rect.right - 10))
 
+        if not self.editor:
             # Draw chrono
             text_chrono = self.font.render(time.strftime("%H:%M:%S", time.gmtime(self.chrono)), True, WHITE)
             self.screen.blit(text_chrono, text_chrono.get_rect(top=self.rect.top + 10, right=self.rect.right - 10))
@@ -212,6 +219,8 @@ class MyRadar:
                 self.sideboard.handle_event(event, self.entity_editor_grp, self.rect)
         if not self.entity_editor_grp.moving and not self.sideboard.is_shown() and not self.toolbox.is_shown():
             self.camera.handle_event(event)
+        else:
+            self.camera.stop_move()
         if (event.type in [pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP] and event.button == 1) or event.type == pygame.MOUSEMOTION and event.buttons[0]:
             self.entity_editor_grp.handle_event(event.type, self.camera.map_cursor(pygame.mouse.get_pos()))
 

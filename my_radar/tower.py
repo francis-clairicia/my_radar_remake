@@ -137,12 +137,23 @@ class TowerEditor(Tower, EntityEditor):
         self.area.radius = self.area.center.distance_to(mouse_pos)
         self.update_area()
 
+    def on_key_press(self, key: int) -> bool:
+        if key in [pygame.K_LEFT, pygame.K_RIGHT]:
+            if key == pygame.K_LEFT:
+                self.area.radius -= 5
+            elif key == pygame.K_RIGHT:
+                self.area.radius += 5
+            return True
+        return False
+
     @staticmethod
     def get_action_dict() -> dict[str, dict[str, str]]:
         return {
             "tower": {
+                "Left arrow": "Decrease area radius",
+                "Right arrow": "Increase area radius",
                 "Click on tower's sprite + Move": "Change tower's area center",
-                "Click on tower's area circle + Move": "Change tower's area raidus"
+                "Click on tower's area circle + Move": "Change tower's area raidus",
             }
         }
 

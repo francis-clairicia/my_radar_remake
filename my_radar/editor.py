@@ -113,9 +113,11 @@ class EditorSideBoardScrollbar:
         self.__whole_box = whole_box
         self.__max_height = whole_box.get_height()
         self.__scrollbar = pygame.Surface((width, self.__max_height)).convert()
+        self.__scrollbar_rect = pygame.Rect(0, 0, 0, 0)
         self.__sub_surface = whole_box
         self.__cursor_rect_percent = [0, 1]
         self.__cursor_percent = 0
+        self.__cursor_rect = pygame.Rect(0, 0, 0, 0)
         self.__color = pygame.Color(color)
         self.__cursor_color = pygame.Color(cursor_color)
         self.__active = False
@@ -136,24 +138,35 @@ class EditorSideBoardScrollbar:
 
     def draw(self, surface: pygame.Surface, **position) -> None:
         self.__scrollbar.fill(self.__color)
-        scrollbar = self.__scrollbar.get_rect()
-        cursor_rect = create_rect_from_edge(0, scrollbar.height * self.__cursor_rect_percent[0], scrollbar.width, scrollbar.height * self.__cursor_rect_percent[1])
-        pygame.draw.rect(self.__scrollbar, self.__cursor_color, cursor_rect)
-        surface.blit(self.__scrollbar, self.__scrollbar.get_rect(**position))
+        self.__scrollbar_rect = scrollbar = surface.blit(self.__scrollbar, self.__scrollbar.get_rect(**position))
+        self.__cursor_rect = create_rect_from_edge(
+            scrollbar.left, scrollbar.top + scrollbar.height * self.__cursor_rect_percent[0],
+            scrollbar.right, scrollbar.top + scrollbar.height * self.__cursor_rect_percent[1]
+        )
+        pygame.draw.rect(surface, self.__cursor_color, self.__cursor_rect)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.__cursor_rect_percent[0] == 0 and self.__cursor_rect_percent[1] == 1:
             return
-        if event.type == pygame.MOUSEWHEEL:
+        if event.type == pygame.MOUSEWHEEL and not self.__active:
             y = -(event.y) * 0.2
             self.__cursor_percent += y
-            if self.__cursor_percent < 0:
-                self.__cursor_percent = 0
-            elif self.__cursor_percent > 1:
-                self.__cursor_percent = 1
+            self.__update_subsurface()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.__cursor_rect.collidepoint(*event.pos):
+            self.__active = True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.__active:
+            self.__active = False
+        elif event.type == pygame.MOUSEMOTION and event.buttons[0] and self.__active:
+            self.__cursor_rect.move_ip(0, event.rel[1])
+            hidden_rect = get_hidden_rect_between_centery(self.__scrollbar_rect, self.__cursor_rect.height)
+            self.__cursor_percent = (self.__cursor_rect.centery - hidden_rect.top) / hidden_rect.height
             self.__update_subsurface()
 
     def __update_subsurface(self) -> None:
+        if self.__cursor_percent < 0:
+            self.__cursor_percent = 0
+        elif self.__cursor_percent > 1:
+            self.__cursor_percent = 1
         box = self.__whole_box.get_rect()
         left = 0
         right = self.__whole_box.get_width()
@@ -165,24 +178,46 @@ class EditorSideBoardScrollbar:
         self.__sub_surface = self.__whole_box.subsurface(rect)
         self.__cursor_rect_percent = [rect.top / self.__whole_box.get_height(), rect.bottom / self.__whole_box.get_height()]
 
+    active = property(lambda self: self.__active)
+
+class EditorActionFormatter(dict):
+
+    def __init__(self, title: str, default: dict[str, str], select=False):
+        super().__init__(default)
+        title = title.title()
+        self.__title = "{} actions:".format(title)
+        if select:
+            self.__title = f"{title} actions (when selected):"
+
+    @classmethod
+    def from_action_dict(cls, action_dict: dict[str, dict[str, str]], select=False):
+        title = tuple(action_dict)[0]
+        return cls(title, action_dict[title], select=select)
+
+    @classmethod
+    def from_entity_editor(cls, entity_type: Type[EntityEditor], select=False):
+        return cls.from_action_dict(entity_type.get_action_dict(), select=select)
+
+    title = property(lambda self: self.__title)
+
 class EditorSideBoard:
 
-    def __init__(self, *custom_actions: dict[str, dict[str, str]]):
+    def __init__(self, *custom_actions: EditorActionFormatter[str, dict[str, str]]):
         actions = {
-            "key": {
+            "Key actions:": {
                 "Escape": "Close editor",
                 "F12": "Show/hide editor stuff",
                 "Delete": "Remove selected entity",
                 "Ctrl+S": "Save in file",
             },
-            "mouse": {
+            "Mouse actions": {
                 "Click on entity": "Select entity",
                 "Click + Move": "- on selected entity: Action on entity\n- on map: Move the camera",
                 "Mouse wheel": "Zoom in/out camera"
             }
         }
         for action in custom_actions:
-            actions |= action
+            actions |= {action.title: action}
 
         font = ("calibri", 20)
         action_font = pygame.font.SysFont(*font)
@@ -195,9 +230,9 @@ class EditorSideBoard:
         rendered_lines = list[pygame.Surface]()
         rendered_lines.append(line_blank)
         for action_title, action_dict in actions.items():
-            rendered_lines.append(title_font.render("{} actions:".format(action_title.title()), True, "black"))
+            rendered_lines.append(title_font.render(action_title, True, "black"))
             for action, action_description in action_dict.items():
-                rendered_lines.append(action_font.render(f"'{action}' :", True, "black"))
+                rendered_lines.append(action_font.render(f'"{action}" :', True, "black"))
                 for line in action_description.splitlines():
                     rendered_lines.append(description_font.render(line, True, "black"))
                 rendered_lines.append(line_blank)
@@ -246,7 +281,7 @@ class EditorSideBoard:
                 if self.__mouse_on_strip:
                     self.__show = mouse_pos[0] == 0
             else:
-                self.__show = self.__box_rect.collidepoint(*pygame.mouse.get_pos())
+                self.__show = self.__scrollbar.active or self.__box_rect.collidepoint(*pygame.mouse.get_pos())
         else:
             self.__show = False
         self.__scrollbar.handle_event(event)

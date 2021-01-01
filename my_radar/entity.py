@@ -49,6 +49,10 @@ class EntityEditor(Entity):
         # pylint: disable=unused-argument
         return False
 
+    @staticmethod
+    def get_action_dict() -> dict[str, dict[str, str]]:
+        return {str(): dict()}
+
     @property
     def selected(self) -> bool:
         return any(isinstance(group, EntityEditorSelector) for group in self.groups())
