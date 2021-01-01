@@ -119,7 +119,8 @@ class Airplane(Entity):
 
     def __update_direction(self) -> None:
         self.__direction = self.__arrival - self.__departure
-        self.__direction.scale_to_length((self.__speed * self.__refresh_time) / 1000)
+        if self.__direction.length_squared() > 0:
+            self.__direction.scale_to_length((self.__speed * self.__refresh_time) / 1000)
         self.__angle = self.__direction.angle_to(Vector2(1, 0))
         self.__image_airplane = pygame.transform.rotate(self.__default_airplane_image, self.__angle).convert_alpha()
         self.__update_hitbox()
@@ -165,13 +166,14 @@ class AirplaneEditor(Airplane, EntityEditor):
             arrowhead_semi_angle = 30
             arrowhead_length = 10
             line_direction_inverted = self.departure - self.arrival
-            line_direction_inverted.scale_to_length(arrowhead_length)
-            arrowhead = [
-                self.arrival,
-                self.arrival + line_direction_inverted.rotate(arrowhead_semi_angle),
-                self.arrival + line_direction_inverted.rotate(-arrowhead_semi_angle),
-            ]
-            self.__arrowhead_rect = pygame.draw.aalines(surface, arrow_color, True, arrowhead)
+            if line_direction_inverted.length_squared() > 0:
+                line_direction_inverted.scale_to_length(arrowhead_length)
+                arrowhead = [
+                    self.arrival,
+                    self.arrival + line_direction_inverted.rotate(arrowhead_semi_angle),
+                    self.arrival + line_direction_inverted.rotate(-arrowhead_semi_angle),
+                ]
+                self.__arrowhead_rect = pygame.draw.aalines(surface, arrow_color, True, arrowhead)
 
             # Draw values
             text_angle = self.angle
@@ -179,8 +181,8 @@ class AirplaneEditor(Airplane, EntityEditor):
                 text_angle = 180 + text_angle
             text_move_angle = text_angle + 90
             text_move_offset = Vector2(15, 0).rotate(-text_move_angle)
-            text_speed = pygame.transform.rotate(self.__font.render("Speed: {}".format(round(self.speed, 1)), True, text_color), text_angle)
-            text_delay = pygame.transform.rotate(self.__font.render("Delay: {}sec".format(round(self.delay, 1)), True, text_color), text_angle)
+            text_speed = pygame.transform.rotate(self.__font.render("Speed: {}px/sec".format(round(self.speed, 1)), True, text_color), text_angle)
+            text_delay = pygame.transform.rotate(self.__font.render("Delay before taking off: {}sec".format(round(self.delay, 1)), True, text_color), text_angle)
             surface.blit(text_speed, text_speed.get_rect(center=(Vector2(arrow_rect.center) + text_move_offset)))
             surface.blit(text_delay, text_delay.get_rect(center=(Vector2(arrow_rect.center) - text_move_offset)))
         super().draw(surface)

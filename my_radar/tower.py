@@ -104,7 +104,7 @@ class TowerEditor(Tower, EntityEditor):
 
     def draw(self, surface: pygame.Surface) -> None:
         if self.selected:
-            text_radius = self.__font.render(str(round(self.area.radius, 1)), True, self.area.color)
+            text_radius = self.__font.render("{}px".format(round(self.area.radius, 1)), True, self.area.color)
             line_rect = pygame.draw.line(surface, self.area.color, self.area.center, self.area.rect.midright, width=2)
             surface.blit(text_radius, text_radius.get_rect(centerx=line_rect.centerx, bottom=line_rect.top - 5))
         super().draw(surface)
