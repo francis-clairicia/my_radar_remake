@@ -140,7 +140,7 @@ class TowerEditor(Tower, EntityEditor):
     def on_key_press(self, key: int) -> bool:
         if key in [pygame.K_LEFT, pygame.K_RIGHT]:
             if key == pygame.K_LEFT:
-                self.area.radius -= 5
+                self.area.radius = max(self.area.radius - 5, 0)
             elif key == pygame.K_RIGHT:
                 self.area.radius += 5
             return True
